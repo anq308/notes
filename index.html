@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Генератор Рукописных Конспектов (Идеал А5 - 4K)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Amatic+SC:wght@400;700&family=Bad+Script&family=Caveat:wght@400;700&family=Marck+Script&family=Neucha&family=Pangolin&family=Ruslan+Display&display=swap" rel="stylesheet">
+    
+    <style>
+        body {
+            background-color: #f8fafc; /* Чуть более свежий и светлый серый */
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        }
+        .page-container {
+            margin-bottom: 2rem;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        canvas {
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+            background-color: white;
+            transition: transform 0.2s;
+            max-width: 100%;
+            border: 1px solid #e2e8f0;
+        }
+        
+        /* Стилизация скроллбара для левой панели */
+        ::-webkit-scrollbar {
+            width: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 10px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+
+        /* Кастомные минималистичные ползунки */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+            margin: 8px 0;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 18px;
+            width: 18px;
+            border-radius: 50%;
+            background: #4f46e5;
+            cursor: pointer;
+            margin-top: -7px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            border: 2px solid #ffffff;
+            transition: transform 0.1s;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #e2e8f0;
+            border-radius: 9999px;
+        }
+        input[type=range]:focus {
+            outline: none;
+        }
+        
+        /* Стилизация color picker */
+        input[type="color"] {
+            -webkit-appearance: none;
+            border: none;
+            padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch-wrapper {
+            padding: 0;
+        }
+        input[type="color"]::-webkit-color-swatch {
+            border: none;
+            border-radius: 6px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+    </style>
+</head>
+<body class="h-screen flex flex-col md:flex-row overflow-hidden">
+
+    <!-- ЛЕВАЯ ПАНЕЛЬ НАСТРОЕК (Минимализм) -->
+    <div class="w-full md:w-[400px] shrink-0 bg-white overflow-y-auto border-r border-slate-200 shadow-sm z-20 flex flex-col relative">
+        
+        <!-- Шапка -->
+        <div class="px-6 py-5 border-b border-slate-100 sticky top-0 bg-white/95 backdrop-blur z-10">
+            <h1 class="text-xl font-bold text-slate-800 flex items-center gap-2 tracking-tight">
+                <span class="text-indigo-600">✍️</span> Конспект PRO
+            </h1>
+            <p class="text-xs text-slate-400 mt-1 font-medium">Генератор для идеальной печати</p>
+        </div>
+        
+        <div class="p-6 flex flex-col gap-8">
+            
+            <!-- Блок: Текст -->
+            <div class="space-y-3">
+                <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider">Текст лекции</label>
+                <textarea id="textInput" rows="5" class="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-xl focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none text-sm text-slate-700 leading-relaxed font-sans transition-all resize-y" placeholder="Вставьте ваш текст сюда..."></textarea>
+            </div>
+
+            <!-- Блок: Бумага -->
+            <div class="space-y-4">
+                <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider">Лист бумаги</label>
+                <div class="grid grid-cols-2 gap-3">
+                    <select id="paperSize" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-indigo-500 cursor-pointer hover:border-slate-300 transition-colors">
+                        <option value="a5" selected>A5 (Тетрадь)</option>
+                        <option value="a4">A4 (Альбомный)</option>
+                    </select>
+                    <select id="paperType" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-indigo-500 cursor-pointer hover:border-slate-300 transition-colors">
+                        <option value="grid" selected>Сетка (Калибровка)</option>
+                        <option value="white">Чистый (Печать)</option>
+                        <option value="lines">Линейка</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Блок: Стиль и Почерк -->
+            <div class="space-y-4">
+                <div class="flex items-center justify-between">
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider">Стиль письма</label>
+                    <!-- Кнопка загрузки своего шрифта теперь аккуратная справа -->
+                    <button id="uploadFontBtn" class="text-xs text-indigo-600 font-medium hover:text-indigo-800 transition flex items-center gap-1">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
+                        Свой шрифт
+                    </button>
+                    <input type="file" id="fontUpload" accept=".ttf,.otf,.woff" class="hidden">
+                </div>
+                
+                <select id="fontFamily" class="w-full p-2.5 bg-white border border-slate-200 rounded-lg text-sm text-slate-700 focus:outline-none focus:border-indigo-500 cursor-pointer hover:border-slate-300 transition-colors">
+                    <option value="'CustomFont', cursive" id="customFontOption" style="display:none;">Ваш загруженный шрифт</option>
+                    <option value="'Marck Script', cursive" selected>Marck Script</option>
+                    <option value="'Bad Script', cursive">Bad Script</option>
+                    <option value="'Caveat', cursive">Caveat</option>
+                </select>
+
+                <div class="grid grid-cols-2 gap-3 pt-1">
+                    <div class="flex items-center gap-3 bg-white border border-slate-200 rounded-lg p-2 hover:border-slate-300 transition-colors">
+                        <input type="color" id="inkColor" value="#1e1b4b" class="w-6 h-6 cursor-pointer">
+                        <span class="text-sm text-slate-600 font-medium">Цвет ручки</span>
+                    </div>
+                    <div class="flex items-center gap-2 bg-white border border-slate-200 rounded-lg p-2 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-colors">
+                        <span class="text-sm text-slate-500 pl-1">Размер</span>
+                        <input type="number" id="fontSize" value="28" min="10" max="60" class="w-full text-right bg-transparent text-sm text-slate-800 font-semibold outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Разделитель -->
+            <hr class="border-slate-100">
+
+            <!-- Блок: Геометрия и Отступы -->
+            <div class="space-y-6">
+                <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Настройка позиций</label>
+                
+                <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-slate-600 font-medium">Подгонка к линии <span class="text-[10px] text-slate-400 font-normal ml-1">(ось Y)</span></span>
+                        <span id="offsetYVal" class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-semibold min-w-[32px] text-center">0</span>
+                    </div>
+                    <input type="range" id="offsetY" min="-30" max="30" value="0">
+                </div>
+
+                <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-slate-600 font-medium">Межстрочный <span class="text-[10px] text-slate-400 font-normal ml-1">(38 = 2 клетки)</span></span>
+                        <span id="lineHeightVal" class="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-semibold min-w-[32px] text-center">38</span>
+                    </div>
+                    <input type="range" id="lineHeight" min="19" max="76" value="38">
+                </div>
+
+                <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-slate-600 font-medium">Отступ сверху</span>
+                        <span id="marginTopVal" class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-semibold min-w-[32px] text-center">38</span>
+                    </div>
+                    <input type="range" id="marginTop" min="0" max="150" value="38">
+                </div>
+
+                <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-slate-600 font-medium">Отступ слева</span>
+                        <span id="marginLeftVal" class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-semibold min-w-[32px] text-center">40</span>
+                    </div>
+                    <input type="range" id="marginLeft" min="0" max="150" value="40">
+                </div>
+
+                <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-slate-600 font-medium">Красная строка <span class="text-[10px] text-slate-400 font-normal ml-1">(абзац)</span></span>
+                        <span id="paragraphIndentVal" class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-semibold min-w-[32px] text-center">20</span>
+                    </div>
+                    <input type="range" id="paragraphIndent" min="0" max="150" value="20">
+                </div>
+
+                <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-slate-600 font-medium">Ширина пробелов</span>
+                        <span id="wordSpacingVal" class="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md font-semibold min-w-[32px] text-center">110</span>
+                    </div>
+                    <input type="range" id="wordSpacing" min="50" max="250" value="110">
+                </div>
+            </div>
+
+            <!-- Разделитель -->
+            <hr class="border-slate-100">
+
+            <!-- Блок: Реализм -->
+            <div class="space-y-6">
+                <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Реализм</label>
+
+                <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-slate-600 font-medium">Наклон почерка</span>
+                        <span id="slantVal" class="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-semibold min-w-[32px] text-center">15</span>
+                    </div>
+                    <input type="range" id="slant" min="-10" max="40" value="15">
+                </div>
+
+                <div class="space-y-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-sm text-slate-600 font-medium">Хаос (Небрежность)</span>
+                        <span id="randomnessValText" class="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md font-semibold min-w-[32px] text-center">7</span>
+                    </div>
+                    <input type="range" id="randomness" min="0" max="30" value="7">
+                </div>
+            </div>
+            
+            <!-- Место под скролл перед фиксированными кнопками -->
+            <div class="h-4"></div>
+        </div>
+
+        <!-- Кнопки действий (Фиксированные внизу панели) -->
+        <div class="mt-auto sticky bottom-0 bg-white border-t border-slate-100 p-6 flex flex-col gap-3 z-10">
+            <button onclick="draw()" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-medium text-sm py-3 px-4 rounded-xl transition-all shadow-sm hover:shadow active:scale-[0.98]">
+                Обновить вид
+            </button>
+
+            <button onclick="downloadAll()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-sm py-3 px-4 rounded-xl transition-all shadow-sm hover:shadow hover:shadow-indigo-500/20 active:scale-[0.98] flex items-center justify-center gap-2">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                Скачать архив (ZIP)
+            </button>
+        </div>
+    </div>
+
+    <!-- ПРАВАЯ ПАНЕЛЬ ПРЕДПРОСМОТРА -->
+    <div class="w-full flex-1 bg-slate-100/50 p-4 md:p-8 overflow-y-auto relative" id="previewArea">
+        <div id="canvasesContainer" class="flex flex-col items-center gap-8 pb-20">
+            <!-- Канвасы генерируются здесь -->
+        </div>
+    </div>
+
+    <script>
+        const PRINT_SCALE = 4; 
+        const CELL_SIZE = 18.9; 
+
+        const SIZES = {
+            a4: { w: 794, h: 1123 },
+            a5: { w: 559, h: 794 }
+        };
+
+        const container = document.getElementById('canvasesContainer');
+        const textInput = document.getElementById('textInput');
+        
+        const inputs = {
+            paperSize: document.getElementById('paperSize'),
+            paperType: document.getElementById('paperType'),
+            fontFamily: document.getElementById('fontFamily'),
+            inkColor: document.getElementById('inkColor'),
+            fontSize: document.getElementById('fontSize'),
+            lineHeight: document.getElementById('lineHeight'),
+            marginTop: document.getElementById('marginTop'),
+            marginLeft: document.getElementById('marginLeft'),
+            paragraphIndent: document.getElementById('paragraphIndent'),
+            wordSpacing: document.getElementById('wordSpacing'),
+            slant: document.getElementById('slant'),
+            randomness: document.getElementById('randomness'),
+            offsetY: document.getElementById('offsetY')
+        };
+
+        const valDisplays = {
+            lineHeight: document.getElementById('lineHeightVal'),
+            marginTop: document.getElementById('marginTopVal'),
+            marginLeft: document.getElementById('marginLeftVal'),
+            paragraphIndent: document.getElementById('paragraphIndentVal'),
+            wordSpacing: document.getElementById('wordSpacingVal'),
+            slant: document.getElementById('slantVal'),
+            randomness: document.getElementById('randomnessValText'),
+            offsetY: document.getElementById('offsetYVal')
+        };
+
+        const fontUploadBtn = document.getElementById('uploadFontBtn');
+        const fontUploadInput = document.getElementById('fontUpload');
+        const customFontOption = document.getElementById('customFontOption');
+
+        let width = 0;
+        let height = 0;
+
+        function createNewPage(index) {
+            const sizeKey = inputs.paperSize.value;
+            width = SIZES[sizeKey].w;
+            height = SIZES[sizeKey].h;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'page-container group';
+
+            const canvas = document.createElement('canvas');
+            canvas.width = width * PRINT_SCALE;
+            canvas.height = height * PRINT_SCALE;
+            canvas.style.width = width + 'px';
+            canvas.style.height = height + 'px';
+            canvas.id = `page-${index}`;
+            
+            // Кнопка скачивания одной страницы (тоже стала более стильной)
+            const btn = document.createElement('button');
+            btn.className = 'mt-3 px-5 py-2.5 bg-white border border-slate-200 text-slate-700 text-sm font-medium rounded-full hover:bg-slate-50 hover:border-slate-300 transition-all opacity-0 group-hover:opacity-100 shadow-sm flex items-center gap-2 translate-y-2 group-hover:translate-y-0';
+            btn.innerHTML = `
+                <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                Сохранить стр. ${index + 1}
+            `;
+            btn.onclick = () => {
+                const link = document.createElement('a');
+                link.download = `notes_page_${index + 1}_HQ.png`;
+                link.href = canvas.toDataURL('image/png', 1.0);
+                link.click();
+            };
+
+            wrapper.appendChild(canvas);
+            wrapper.appendChild(btn);
+            container.appendChild(wrapper);
+
+            const ctx = canvas.getContext('2d');
+            ctx.scale(PRINT_SCALE, PRINT_SCALE);
+            drawBackground(ctx, width, height);
+            return ctx;
+        }
+
+        function drawBackground(ctx, w, h) {
+            const type = inputs.paperType.value;
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, w, h);
+
+            if (type === 'white') return;
+
+            // Более нежный цвет калибровочной сетки
+            ctx.strokeStyle = 'rgba(148, 163, 184, 0.3)'; 
+            ctx.lineWidth = 1;
+
+            if (type === 'lines' || type === 'grid') {
+                for (let y = CELL_SIZE; y < h; y += CELL_SIZE) {
+                    ctx.beginPath();
+                    ctx.moveTo(0, y);
+                    ctx.lineTo(w, y);
+                    ctx.stroke();
+                }
+            }
+            if (type === 'grid') {
+                for (let x = CELL_SIZE; x < w; x += CELL_SIZE) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 0);
+                    ctx.lineTo(x, h);
+                    ctx.stroke();
+                }
+            }
+        }
+
+        function draw() {
+            container.innerHTML = '';
+            
+            let currentPageIndex = 0;
+            let currentCtx = createNewPage(currentPageIndex);
+            
+            const baseSize = parseInt(inputs.fontSize.value);
+            const font = inputs.fontFamily.value;
+            const color = inputs.inkColor.value;
+            const rawChaos = parseInt(inputs.randomness.value); 
+            const chaos = rawChaos / 10;
+            const lh = parseInt(inputs.lineHeight.value);
+            const slantDeg = parseInt(inputs.slant.value);
+            const manualOffsetY = parseInt(inputs.offsetY.value);
+            
+            const startX = parseInt(inputs.marginLeft.value);
+            const pIndent = parseInt(inputs.paragraphIndent.value); 
+            const startY = parseInt(inputs.marginTop.value);
+            const spaceMod = parseInt(inputs.wordSpacing.value) / 100;
+
+            currentCtx.fillStyle = color;
+            currentCtx.textBaseline = "alphabetic"; 
+            
+            let cursorY = startY; 
+
+            currentCtx.font = `${baseSize}px ${font}`;
+            let baseSpaceWidth = currentCtx.measureText("a a").width - (currentCtx.measureText("a").width * 2);
+            if (baseSpaceWidth <= 0) baseSpaceWidth = baseSize * 0.4;
+            
+            const text = textInput.value;
+            const paragraphs = text.split('\n');
+
+            paragraphs.forEach(paragraph => {
+                if (paragraph === "") {
+                    cursorY += lh;
+                    [currentCtx, cursorY, currentPageIndex] = checkPageOverflow(currentCtx, cursorY, currentPageIndex, lh, startY);
+                    return;
+                }
+
+                let lineJitter = (Math.random() - 0.2) * rawChaos * 0.8;
+                let cursorX = startX + pIndent + lineJitter;
+
+                const words = paragraph.split(' ');
+                
+                words.forEach(word => {
+                    if (word === "") return;
+
+                    currentCtx.font = `${baseSize}px ${font}`;
+                    const rawWordWidth = currentCtx.measureText(word).width;
+
+                    if (cursorX + rawWordWidth > width - 25) {
+                        cursorY += lh;
+                        [currentCtx, cursorY, currentPageIndex] = checkPageOverflow(currentCtx, cursorY, currentPageIndex, lh, startY);
+                        
+                        lineJitter = (Math.random() - 0.3) * rawChaos * 1.2;
+                        cursorX = startX + lineJitter;
+                    }
+
+                    drawWord(currentCtx, word, cursorX, cursorY, baseSize, chaos, font, slantDeg, manualOffsetY);
+
+                    const spaceWidth = baseSpaceWidth * spaceMod;
+                    cursorX += rawWordWidth + spaceWidth; 
+                });
+
+                cursorY += lh;
+                [currentCtx, cursorY, currentPageIndex] = checkPageOverflow(currentCtx, cursorY, currentPageIndex, lh, startY);
+            });
+        }
+
+        function checkPageOverflow(ctx, y, pageIndex, lh, startY) {
+            if (y > height - lh + 5) {
+                pageIndex++;
+                const newCtx = createNewPage(pageIndex);
+                newCtx.fillStyle = inputs.inkColor.value;
+                newCtx.textBaseline = "alphabetic";
+                return [newCtx, startY, pageIndex];
+            }
+            return [ctx, y, pageIndex];
+        }
+
+        function drawWord(ctx, word, x, y, size, chaos, font, slantDeg, offsetY) {
+            const skewX = -Math.tan(slantDeg * Math.PI / 180);
+
+            ctx.save();
+
+            const jitterY = (Math.random() - 0.5) * (chaos * 2); 
+            const rotation = (Math.random() - 0.5) * (chaos * 0.02); 
+
+            ctx.translate(x, y + jitterY + offsetY);
+            ctx.transform(1, 0, skewX, 1, 0, 0); 
+            ctx.rotate(rotation);
+
+            ctx.font = `${size}px ${font}`;
+            ctx.fillText(word, 0, 0);
+
+            ctx.restore();
+        }
+
+        async function downloadAll() {
+            const canvases = document.querySelectorAll('canvas');
+            if (canvases.length === 0) return;
+
+            if (canvases.length === 1) {
+                const link = document.createElement('a');
+                link.download = `notes_page_1_HQ.png`;
+                link.href = canvases[0].toDataURL('image/png', 1.0);
+                link.click();
+                return;
+            }
+
+            const btn = document.querySelector('button[onclick="downloadAll()"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<svg class="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg> Упаковка...';
+            btn.disabled = true;
+
+            try {
+                const zip = new JSZip();
+                canvases.forEach((canvas, index) => {
+                    const dataUrl = canvas.toDataURL('image/png', 1.0);
+                    const base64Data = dataUrl.split(',')[1];
+                    zip.file(`notes_page_${index + 1}_HQ.png`, base64Data, {base64: true});
+                });
+
+                const content = await zip.generateAsync({type: "blob"});
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(content);
+                link.download = "student_notes_all.zip";
+                link.click();
+            } catch (err) {
+                alert('Ошибка при создании архива');
+                console.error(err);
+            } finally {
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        Object.values(inputs).forEach(input => {
+            input.addEventListener('input', (e) => {
+                if (valDisplays[e.target.id]) {
+                    valDisplays[e.target.id].textContent = e.target.value;
+                }
+                draw();
+            });
+        });
+        textInput.addEventListener('input', draw);
+
+        fontUploadBtn.addEventListener('click', () => fontUploadInput.click());
+        fontUploadInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const fontData = e.target.result;
+                const customFont = new FontFace('CustomFont', `url(${fontData})`);
+                
+                customFont.load().then(function(loadedFont) {
+                    document.fonts.add(loadedFont);
+                    customFontOption.style.display = 'block';
+                    inputs.fontFamily.value = "'CustomFont', cursive";
+                    
+                    const select = inputs.fontFamily;
+                    for(let i=0; i<select.options.length; i++){
+                        if(select.options[i].value === "'CustomFont', cursive"){
+                            select.selectedIndex = i;
+                            break;
+                        }
+                    }
+                    draw();
+                }).catch(function(error) {
+                    alert('Ошибка при загрузке шрифта. Убедитесь, что это файл .ttf или .otf');
+                });
+            };
+            reader.readAsDataURL(file);
+        });
+
+        textInput.value = "Введение в атаки с внедрением кода\n\nНесмотря на то, что в современном мире число атак с внедрением кода уменьшилось, они все еще широко распространены. Чаще всего они становятся возможными из-за невнимательности разработчиков, которые передают присланные пользователями данные в интерфейс командной строки (CLI) или любой другой изолированный интерпретатор на сервере без должной обработки.\n\nПоскольку большинство операций с базами данных выполняется на стороне сервера, клиентская часть нас в данном контексте не интересует.";
+
+        document.fonts.ready.then(draw);
+        window.onload = draw;
+    </script>
+</body>
+</html>
